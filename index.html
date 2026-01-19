@@ -637,7 +637,7 @@
 
     <script>
         // Google Drive API Configuration
-        const GOOGLE_CLIENT_ID = '847583487125-j2q3p5r8k9m0n1o2p3q4r5s6t7u8v9w0.apps.googleusercontent.com';
+        const GOOGLE_CLIENT_ID = '326873853247-5au4214jjc0rh5ktqoam99lkjualppaa.apps.googleusercontent.com';
         const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
         const APP_FOLDER_NAME = 'Finance Control Pro - prosperarbem';
         const BACKUP_FILENAME = 'finance_data.json';
@@ -652,10 +652,11 @@
 
         // Google API Initialization
         window.addEventListener('load', function() {
-            if (document.readyState === 'loading') return;
             initializeGoogleAPI();
             setupOnlineOfflineListeners();
             loadLocalData();
+            document.getElementById('transactionDate').valueAsDate = new Date();
+            document.getElementById('filterMonth').value = new Date().toISOString().slice(0, 7);
             updateDashboard();
             updateTransactionList();
             updateChart();
@@ -664,6 +665,10 @@
         });
 
         function initializeGoogleAPI() {
+            if (!window.gapi) {
+                console.error('gapi not loaded');
+                return;
+            }
             gapi.load('client:auth2', function() {
                 gapi.client.init({
                     clientId: GOOGLE_CLIENT_ID,
@@ -692,25 +697,26 @@
         }
 
         function updateSignInStatus() {
+            const signInBtn = document.getElementById('googleSignIn');
+            const signOutBtn = document.getElementById('googleSignOut');
+
             if (googleAuth && googleAuth.isSignedIn.get()) {
-                showGoogleSignedInUI();
+                if (signInBtn) signInBtn.style.display = 'none';
+                if (signOutBtn) signOutBtn.style.display = 'block';
                 setupGoogleDriveFolder();
+                syncCloudToLocal();
             } else {
+                if (signInBtn) signInBtn.style.display = 'block';
+                if (signOutBtn) signOutBtn.style.display = 'none';
                 showGoogleSignInUI();
             }
         }
 
         function showGoogleSignInUI() {
-            const signInBtn = document.getElementById('googleSignIn');
             const syncStatus = document.getElementById('syncStatus');
-            if (signInBtn) signInBtn.style.display = 'block';
-            if (syncStatus) syncStatus.innerHTML = '<span style="color: var(--color-warning);">⚠️ Desconectado do Google Drive</span>';
-        }
-
-        function showGoogleSignedInUI() {
-            const signInBtn = document.getElementById('googleSignIn');
-            if (signInBtn) signInBtn.style.display = 'none';
-            updateSyncStatus();
+            if (syncStatus) {
+                syncStatus.innerHTML = '<span style="color: var(--color-warning);">⚠️ Faça login com Google para sincronizar</span>';
+            }
         }
 
         function handleGoogleSignIn() {
@@ -804,28 +810,50 @@
             const file = new Blob([fileContent], { type: 'application/json' });
 
             if (backupFileId) {
-                // Update existing file
-                gapi.client.drive.files.update({
-                    fileId: backupFileId,
-                    resource: { name: BACKUP_FILENAME },
-                    media: { mimeType: 'application/json', body: file }
+                gapi.client.request({
+                    path: `/upload/drive/v3/files/${backupFileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: fileContent
                 }).then(() => {
+                    localStorage.setItem('lastSync', Date.now());
                     updateSyncStatus();
                 }).catch(err => {
                     console.error('Upload error:', err);
                     queueForSync();
                 });
             } else {
-                // Create new file
                 if (!appFolderId) return;
-                gapi.client.drive.files.create({
-                    resource: {
-                        name: BACKUP_FILENAME,
-                        parents: [appFolderId]
+                const metadata = {
+                    name: BACKUP_FILENAME,
+                    mimeType: 'application/json',
+                    parents: [appFolderId]
+                };
+
+                const boundary = '-------314159265358979323846';
+                const delimiter = "\r\n--" + boundary + "\r\n";
+                const close_delim = "\r\n--" + boundary + "--";
+
+                const multipartRequestBody =
+                    delimiter +
+                    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+                    JSON.stringify(metadata) +
+                    delimiter +
+                    'Content-Type: application/json\r\n\r\n' +
+                    fileContent +
+                    close_delim;
+
+                gapi.client.request({
+                    path: '/upload/drive/v3/files',
+                    method: 'POST',
+                    params: { uploadType: 'multipart' },
+                    headers: {
+                        'Content-Type': 'multipart/related; boundary=' + boundary
                     },
-                    media: { mimeType: 'application/json', body: file }
+                    body: multipartRequestBody
                 }).then(response => {
                     backupFileId = response.result.id;
+                    localStorage.setItem('lastSync', Date.now());
                     updateSyncStatus();
                 }).catch(err => {
                     console.error('Create file error:', err);
@@ -845,8 +873,7 @@
             }).then(response => {
                 const cloudData = response.result;
                 if (cloudData && cloudData.transactions && cloudData.budgets) {
-                    // Check if cloud data is newer
-                    const localTimestamp = localStorage.getItem('lastSync') || 0;
+                    const localTimestamp = parseInt(localStorage.getItem('lastSync') || '0', 10);
                     const cloudTimestamp = new Date(cloudData.exportDate).getTime();
 
                     if (cloudTimestamp > localTimestamp) {
@@ -887,7 +914,7 @@
             if (!statusEl) return;
 
             if (!isOnline) {
-                statusEl.innerHTML = '<span style="color: var(--color-warning);">📡 Modo Offline - Sincronizando quando online</span>';
+                statusEl.innerHTML = '<span style="color: var(--color-warning);">📡 Modo Offline - Sincroniza quando voltar a internet</span>';
             } else if (googleAuth && googleAuth.isSignedIn.get()) {
                 if (syncQueue.length > 0) {
                     statusEl.innerHTML = `<span style="color: var(--color-accent);">🔄 Sincronizando (${syncQueue.length} pendente)...</span>`;
@@ -898,10 +925,6 @@
                 statusEl.innerHTML = '<span style="color: var(--color-warning);">⚠️ Faça login com Google para sincronizar</span>';
             }
         }
-
-        // Initialize date input with today's date
-        document.getElementById('transactionDate').valueAsDate = new Date();
-        document.getElementById('filterMonth').value = new Date().toISOString().slice(0, 7);
 
         function addTransaction() {
             const description = document.getElementById('description').value.trim();
@@ -932,8 +955,6 @@
             updateDashboard();
             updateTransactionList();
             updateChart();
-            
-            // Sync to Google Drive
             syncLocalToCloud();
         }
 
@@ -944,8 +965,6 @@
                 updateDashboard();
                 updateTransactionList();
                 updateChart();
-                
-                // Sync to Google Drive
                 syncLocalToCloud();
             }
         }
@@ -1086,8 +1105,6 @@
             localStorage.setItem('budgets', JSON.stringify(budgets));
             document.getElementById('budgetLimit').value = '';
             updateBudgetsList();
-            
-            // Sync to Google Drive
             syncLocalToCloud();
         }
 
@@ -1136,8 +1153,6 @@
             delete budgets[category];
             localStorage.setItem('budgets', JSON.stringify(budgets));
             updateBudgetsList();
-            
-            // Sync to Google Drive
             syncLocalToCloud();
         }
 
@@ -1244,10 +1259,29 @@
                         return;
                     }
 
-                    // Store for merging
                     window.pendingBackup = backup;
-                    alert('✅ Arquivo carregado! Escolha mesclar com dados existentes ou substituir.');
-                    document.getElementById('mergeOptions').style.display = 'block';
+                    const choice = confirm('✅ Arquivo carregado!\n\nOK = Mesclar (combinar dados)\nCancelar = Substituir (substituir todos os dados)');
+                    
+                    if (choice) {
+                        transactions = [...transactions, ...window.pendingBackup.transactions];
+                        Object.assign(budgets, window.pendingBackup.budgets);
+                        alert('✅ Dados mesclados com sucesso!');
+                    } else {
+                        if (confirm('⚠️ Tem certeza que deseja SUBSTITUIR todos os dados atuais?')) {
+                            transactions = window.pendingBackup.transactions;
+                            budgets = window.pendingBackup.budgets;
+                            alert('✅ Dados restaurados com sucesso!');
+                        }
+                    }
+
+                    localStorage.setItem('transactions', JSON.stringify(transactions));
+                    localStorage.setItem('budgets', JSON.stringify(budgets));
+                    window.pendingBackup = null;
+                    updateDashboard();
+                    updateTransactionList();
+                    updateChart();
+                    updateBudgetsList();
+                    syncLocalToCloud();
                 } catch (error) {
                     alert('❌ Erro ao ler arquivo: ' + error.message);
                 }
@@ -1261,30 +1295,6 @@
                 alert('⚠️ Nenhum arquivo carregado. Primeiro selecione um arquivo de backup.');
                 return;
             }
-
-            const choice = confirm('Escolha:\nOK = Mesclar (combinar dados)\nCancelar = Substituir (substituir todos os dados)');
-            
-            if (choice) {
-                // Merge mode
-                transactions = [...transactions, ...window.pendingBackup.transactions];
-                Object.assign(budgets, window.pendingBackup.budgets);
-                alert('✅ Dados mesclados com sucesso!');
-            } else {
-                // Replace mode
-                if (confirm('⚠️ Tem certeza que deseja SUBSTITUIR todos os dados atuais?')) {
-                    transactions = window.pendingBackup.transactions;
-                    budgets = window.pendingBackup.budgets;
-                    alert('✅ Dados restaurados com sucesso!');
-                }
-            }
-
-            localStorage.setItem('transactions', JSON.stringify(transactions));
-            localStorage.setItem('budgets', JSON.stringify(budgets));
-            window.pendingBackup = null;
-            updateDashboard();
-            updateTransactionList();
-            updateChart();
-            updateBudgetsList();
         }
 
         function clearAllData() {
@@ -1298,10 +1308,7 @@
                     updateTransactionList();
                     updateChart();
                     updateBudgetsList();
-                    
-                    // Sync deletion to Google Drive
                     syncLocalToCloud();
-                    
                     alert('✅ Dados apagados com sucesso');
                 }
             }
@@ -1324,12 +1331,9 @@
         function formatDate(dateString) {
             return new Intl.DateTimeFormat('pt-BR').format(new Date(dateString));
         }
-
-        // Initialize on load
-        updateDashboard();
-        updateTransactionList();
-        updateChart();
-        updateBudgetsList();
     </script>
+
+    <!-- Carrega a biblioteca do Google APIs (gapi) -->
+    <script src="https://apis.google.com/js/api.js" async defer></script>
 </body>
 </html>
