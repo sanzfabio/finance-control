@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Teste Drive Sync - Finance Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      background: #020617;
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    .card {
+      max-width: 700px;
+      margin: 0 auto;
+      background: #0f172a;
+      padding: 1.5rem;
+      border-radius: 8px;
+      border-left: 4px solid #38bdf8;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: #38bdf8;
+    }
+    p {
+      color: #cbd5e1;
+      font-size: 0.95rem;
+    }
+    .btn {
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-right: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .btn-primary {
+      background: #38bdf8;
+      color: #020617;
+    }
+    .btn-secondary {
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #64748b;
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 0.75rem;
+      font-size: 0.9rem;
+    }
+    .status span {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+    }
+    .status-ok {
+      background: #022c22;
+      color: #6ee7b7;
+    }
+    .status-warn {
+      background: #451a03;
+      color: #fed7aa;
+    }
+    .status-error {
+      background: #450a0a;
+      color: #fecaca;
+    }
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      margin-top: 1rem;
+      background: #020617;
+      color: #e5e7eb;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      padding: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9rem;
+    }
+    code {
+      background: #020617;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      font-size: 0.85rem;
+      color: #bae6fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Teste de Sincronização com Google Drive</h1>
+    <p>
+      Esta página é só para testar o login com Google e salvar/carregar um arquivo JSON no Drive. Ela não mexe nos dados do
+      <strong>Finance Control Pro</strong> principal.
+    </p>
+
+    <div style="margin-top: 1rem;">
+      <button id="authorize_button" class="btn btn-primary" disabled>🔐 Login com Google</button>
+      <button id="signout_button" class="btn btn-secondary" disabled>🚪 Sair</button>
+    </div>
+
+    <div class="status" id="status_area">
+      <span class="status-warn">Aguardando scripts carregarem...</span>
+    </div>
+
+    <div style="margin-top:1rem;">
+      <button id="save_button" class="btn btn-primary" disabled>💾 Salvar JSON no Drive</button>
+      <button id="load_button" class="btn btn-secondary" disabled>📥 Carregar JSON do Drive</button>
+    </div>
+
+    <textarea id="json_area" spellcheck="false">
+{
+  "mensagem": "Teste de sincronização com Google Drive",
+  "autor": "Fábio",
+  "timestamp": ""
+}
+    </textarea>
+
+    <p style="margin-top:0.75rem; font-size:0.85rem;">
+      Arquivo usado no teste: <code>finance_control_drive_test.json</code> na sua conta Google Drive.
+    </p>
+  </div>
+
+  <script>
+    // CONFIGURAÇÕES GOOGLE
+    const CLIENT_ID = '326873853247-5au4214jjc0rh5ktqoam99lkjualppaa.apps.googleusercontent.com';
+    const API_KEY = ''; // não precisa para este fluxo simples
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+    const TEST_FILENAME = 'finance_control_drive_test.json';
+
+    let tokenClient;
+    let gapiInited = false;
+    let gisInited = false;
+
+    const authorizeButton = document.getElementById('authorize_button');
+    const signoutButton = document.getElementById('signout_button');
+    const saveButton = document.getElementById('save_button');
+    const loadButton = document.getElementById('load_button');
+    const statusArea = document.getElementById('status_area');
+    const jsonArea = document.getElementById('json_area');
+
+    function setStatus(type, message) {
+      let cls = 'status-warn';
+      if (type === 'ok') cls = 'status-ok';
+      if (type === 'error') cls = 'status-error';
+      statusArea.innerHTML = `<span class="${cls}">${message}</span>`;
+    }
+
+    // Chamado quando gapi.js carregar
+    function gapiLoaded() {
+      gapi.load('client', initializeGapiClient);
+    }
+
+    async function initializeGapiClient() {
+      try {
+        await gapi.client.init({
+          apiKey: API_KEY || undefined,
+          discoveryDocs: [DISCOVERY_DOC],
+        });
+        gapiInited = true;
+        maybeEnableButtons();
+        setStatus('ok', 'Biblioteca Google API carregada. Faça login para testar.');
+      } catch (err) {
+        console.error(err);
+        setStatus('error', 'Erro ao inicializar Google API (gapi). Veja o console.');
+      }
+    }
+
+    // Chamado quando gsi/client carregar
+    function gisLoaded() {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: '', // será definido em handleAuthClick
+      });
+      gisInited = true;
+      maybeEnableButtons();
+    }
+
+    function maybeEnableButtons() {
+      if (gapiInited && gisInited) {
+        authorizeButton.disabled = false;
+        setStatus('warn', 'Pronto. Clique em "Login com Google" para testar.');
+      }
+    }
+
+    authorizeButton.onclick = () => handleAuthClick();
+    signoutButton.onclick = () => handleSignoutClick();
+    saveButton.onclick = () => saveJsonToDrive();
+    loadButton.onclick = () => loadJsonFromDrive();
+
+    function handleAuthClick() {
+      tokenClient.callback = async (resp) => {
+        if (resp.error) {
+          console.error(resp);
+          setStatus('error', 'Erro na autenticação. Veja o console.');
+          return;
+        }
+        authorizeButton.textContent = '✅ Logado';
+        authorizeButton.disabled = true;
+        signoutButton.disabled = false;
+        saveButton.disabled = false;
+        loadButton.disabled = false;
+        setStatus('ok', 'Autenticado com Google. Agora você pode salvar/carregar JSON no Drive.');
+      };
+
+      if (gapi.client.getToken() === null) {
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+      } else {
+        tokenClient.requestAccessToken({ prompt: '' });
+      }
+    }
+
+    function handleSignoutClick() {
+      const token = gapi.client.getToken();
+      if (token !== null) {
+        google.accounts.oauth2.revoke(token.access_token);
+        gapi.client.setToken('');
+      }
+      authorizeButton.textContent = '🔐 Login com Google';
+      authorizeButton.disabled = false;
+      signoutButton.disabled = true;
+      saveButton.disabled = true;
+      loadButton.disabled = true;
+      setStatus('warn', 'Sessão encerrada. Faça login novamente para testar.');
+    }
+
+    async function findOrCreateTestFile() {
+      try {
+        const res = await gapi.client.drive.files.list({
+          q: `name = '${TEST_FILENAME}' and trashed = false`,
+          fields: 'files(id, name)',
+          spaces: 'drive',
+          pageSize: 1,
+        });
+
+        if (res.result.files && res.result.files.length > 0) {
+          return res.result.files[0].id;
+        }
+
+        // Criar arquivo
+        const fileMetadata = {
+          name: TEST_FILENAME,
+          mimeType: 'application/json',
+        };
+
+        const boundary = '-------314159265358979323846';
+        const delimiter = '\r\n--' + boundary + '\r\n';
+        const closeDelim = '\r\n--' + boundary + '--';
+        const content = jsonArea.value;
+
+        const body =
+          delimiter +
+          'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+          JSON.stringify(fileMetadata) +
+          delimiter +
+          'Content-Type: application/json\r\n\r\n' +
+          content +
+          closeDelim;
+
+        const createRes = await gapi.client.request({
+          path: '/upload/drive/v3/files',
+          method: 'POST',
+          params: { uploadType: 'multipart' },
+          headers: {
+            'Content-Type': 'multipart/related; boundary=' + boundary,
+          },
+          body,
+        });
+
+        return createRes.result.id;
+      } catch (err) {
+        console.error(err);
+        setStatus('error', 'Erro ao localizar/criar arquivo no Drive.');
+        throw err;
+      }
+    }
+
+    async function saveJsonToDrive() {
+      try {
+        setStatus('warn', 'Salvando JSON no Drive...');
+        const fileId = await findOrCreateTestFile();
+        const content = jsonArea.value;
+
+        await gapi.client.request({
+          path: `/upload/drive/v3/files/${fileId}`,
+          method: 'PATCH',
+          params: { uploadType: 'media' },
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: content,
+        });
+
+        setStatus('ok', 'JSON salvo com sucesso no Drive.');
+      } catch (err) {
+        console.error(err);
+        setStatus('error', 'Erro ao salvar JSON no Drive.');
+      }
+    }
+
+    async function loadJsonFromDrive() {
+      try {
+        setStatus('warn', 'Carregando JSON do Drive...');
+        const res = await gapi.client.drive.files.list({
+          q: `name = '${TEST_FILENAME}' and trashed = false`,
+          fields: 'files(id, name)',
+          spaces: 'drive',
+          pageSize: 1,
+        });
+
+        if (!res.result.files || res.result.files.length === 0) {
+          setStatus('warn', 'Arquivo ainda não existe no Drive. Salve primeiro.');
+          return;
+        }
+
+        const fileId = res.result.files[0].id;
+
+        const fileRes = await gapi.client.drive.files.get({
+          fileId,
+          alt: 'media',
+        });
+
+        jsonArea.value = JSON.stringify(fileRes.result, null, 2);
+        setStatus('ok', 'JSON carregado do Drive com sucesso.');
+      } catch (err) {
+        console.error(err);
+        setStatus('error', 'Erro ao carregar JSON do Drive.');
+      }
+    }
+  </script>
+
+  <!-- gapi -->
+  <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+  <!-- Google Identity Services -->
+  <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
