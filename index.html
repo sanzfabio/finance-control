@@ -140,10 +140,12 @@
         </div>
         <div class="controls">
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('transactions')">📋 Histórico</button>
-                <button class="tab" onclick="switchTab('budgets')">🎯 Metas</button>
-                <button class="tab" onclick="switchTab('export')">📥 Relatórios</button>
-            </div>
+				<button class="tab active" onclick="switchTab('transactions')">📋 Histórico</button>
+				<button class="tab" onclick="switchTab('budgets')">🎯 Metas</button>
+				<button class="tab" onclick="switchTab('export')">📥 Relatórios</button>
+				<button class="tab" onclick="switchTab('settings')">⚙️ Configurações</button>
+			</div>
+
             <div id="transactions" class="tab-content active">
                 <h2 style="margin-bottom: var(--spacing-md); color: var(--color-accent);">📋 Histórico de Transações</h2>
                 <div class="filters">
@@ -159,7 +161,7 @@
                 <h2 style="margin-bottom: var(--spacing-md); color: var(--color-accent);">🎯 Acompanhamento de Metas</h2>
                 <div id="budgetsList"></div>
             </div>
-            <div id="export" class="tab-content">
+			<div id="export" class="tab-content">
                 <h2 style="margin-bottom: var(--spacing-md); color: var(--color-accent);">📥 Backup, Restauração e Relatórios</h2>
                 <div style="background-color: var(--color-bg-elevated); padding: var(--spacing-lg); border-radius: 8px; margin-bottom: var(--spacing-lg); border-left: 4px solid var(--color-success);">
                     <h3 style="color: var(--color-success); margin-bottom: var(--spacing-md);">💾 Backup de Dados</h3>
@@ -187,10 +189,41 @@
                 </div>
                 <div id="reportOutput" style="margin-top: var(--spacing-lg);"></div>
             </div>
+			<div id="settings" class="tab-content">
+                <h2 style="margin-bottom: var(--spacing-md); color: var(--color-accent);">⚙️ Configurações</h2>
+                
+                <div style="background-color: var(--color-bg-elevated); padding: var(--spacing-lg); border-radius: 8px; margin-bottom: var(--spacing-lg); border-left: 4px solid var(--color-accent);">
+                    <h3 style="color: var(--color-accent); margin-bottom: var(--spacing-md);">📂 Gerenciar Categorias</h3>
+                    <p style="color: var(--color-text-secondary); margin-bottom: var(--spacing-md);">Adicione ou remova categorias personalizadas para suas transações.</p>
+                    
+                    <div class="form-group">
+                        <div class="form-field">
+                            <label>Nome da Categoria</label>
+                            <input type="text" id="newCategory" placeholder="Ex: Moradia, Vestuário, Pet...">
+                        </div>
+                        <div class="form-field">
+                            <label>Tipo</label>
+                            <select id="categoryType">
+                                <option value="expense">Despesa</option>
+                                <option value="income">Receita</option>
+                                <option value="both">Ambos</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn-primary" onclick="addCategory()">➕ Adicionar Categoria</button>
+                    </div>
+                </div>
+
+                <div style="background-color: var(--color-bg-elevated); padding: var(--spacing-lg); border-radius: 8px; border-left: 4px solid var(--color-success);">
+                    <h3 style="color: var(--color-success); margin-bottom: var(--spacing-md);">📋 Categorias Cadastradas</h3>
+                    <div id="categoriesList"></div>
+                </div>
+            </div>
         </div>
     </div>
     <script>
-        const CLIENT_ID = '576473287840-cb63ib6vjfamk3le7detfeqpk4v9obh1.apps.googleusercontent.com';
+        const CLIENT_ID = '847583487125-j2q3p5r8k9m0n1o2p3q4r5s6t7u8v9w0.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
         const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
         const APP_FOLDER_ID = '1nJKJF4CgCWPVYB1F2nyA-GUgPvnwK47l';
@@ -198,10 +231,13 @@
         let tokenClient, gapiInited = false, gisInited = false, backupFileId = null, isOnline = navigator.onLine;
         let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
         let budgets = JSON.parse(localStorage.getItem('budgets')) || {};
+		let categories = JSON.parse(localStorage.getItem('categories')) || {
+    expense: ['Alimentação', 'Transporte', 'Saúde', 'Educação', 'Entretenimento', 'Outros'],
+    income: ['Salário', 'Investimento', 'Freelance', 'Outros']};
         window.addEventListener('load', function() {
             document.getElementById('transactionDate').valueAsDate = new Date();
             document.getElementById('filterMonth').value = new Date().toISOString().slice(0, 7);
-            loadLocalData(); updateDashboard(); updateTransactionList(); updateChart(); updateBudgetsList(); setupOnlineOfflineListeners();
+            loadLocalData(); updateDashboard(); updateTransactionList(); updateChart(); updateBudgetsList(); updateCategorySelects(); updateCategoriesList(); setupOnlineOfflineListeners();
         });
         function gapiLoaded() { gapi.load('client', initializeGapiClient); }
         async function initializeGapiClient() {
@@ -263,7 +299,7 @@
         }
         async function createBackupFile() {
             try {
-                const backup = { version: '2.0', exportDate: new Date().toISOString(), transactions: transactions, budgets: budgets };
+                const backup = { version: '2.0', exportDate: new Date().toISOString(), transactions: transactions, budgets: budgets, categories: categories };
                 const fileMetadata = { name: BACKUP_FILENAME, mimeType: 'application/json', parents: [APP_FOLDER_ID] };
                 const boundary = '-------314159265358979323846';
                 const delimiter = '\r\n--' + boundary + '\r\n';
@@ -281,7 +317,7 @@
             if (!isOnline || !gapi.client.getToken() || !backupFileId) return;
             try {
                 setStatus('warn', '🔄 Sincronizando com Drive...');
-                const backup = { version: '2.0', exportDate: new Date().toISOString(), transactions: transactions, budgets: budgets };
+                const backup = { version: '2.0', exportDate: new Date().toISOString(), transactions: transactions, budgets: budgets, categories: categories };
                 const content = JSON.stringify(backup, null, 2);
                 await gapi.client.request({
                     path: `/upload/drive/v3/files/${backupFileId}`, method: 'PATCH', params: { uploadType: 'media' },
@@ -290,29 +326,55 @@
                 localStorage.setItem('lastSync', Date.now()); setStatus('ok', '✅ Sincronizado com Google Drive');
             } catch (err) { console.error('Erro ao salvar no Drive:', err); setStatus('error', 'Erro ao sincronizar com Drive'); }
         }
-        async function syncCloudToLocal() {
-            if (!isOnline || !gapi.client.getToken() || !backupFileId) return;
-            try {
-                const fileRes = await gapi.client.drive.files.get({ fileId: backupFileId, alt: 'media' });
-                const cloudData = fileRes.result;
-                if (cloudData && cloudData.transactions && cloudData.budgets) {
-                    const localTimestamp = parseInt(localStorage.getItem('lastSync') || '0', 10);
-                    const cloudTimestamp = new Date(cloudData.exportDate).getTime();
-                    if (cloudTimestamp > localTimestamp) {
-                        transactions = cloudData.transactions; budgets = cloudData.budgets;
-                        localStorage.setItem('transactions', JSON.stringify(transactions));
-                        localStorage.setItem('budgets', JSON.stringify(budgets));
-                        localStorage.setItem('lastSync', cloudTimestamp);
-                        updateDashboard(); updateTransactionList(); updateChart(); updateBudgetsList();
-                        console.log('Dados carregados do Drive');
-                    }
-                }
-                setStatus('ok', '✅ Sincronizado com Google Drive');
-            } catch (err) { console.error('Erro ao carregar do Drive:', err); setStatus('error', 'Erro ao carregar do Drive'); }
-        }
-        function loadLocalData() {
+		async function syncCloudToLocal() {
+			if (!isOnline || !gapi.client.getToken() || !backupFileId) return;
+			try {
+				const fileRes = await gapi.client.drive.files.get({ fileId: backupFileId, alt: 'media' });
+				const cloudData = fileRes.result;
+				
+				if (cloudData && cloudData.transactions && cloudData.budgets) {
+					const localTimestamp = parseInt(localStorage.getItem('lastSync') || '0', 10);
+					const cloudTimestamp = new Date(cloudData.exportDate).getTime();
+					
+					if (cloudTimestamp > localTimestamp) {
+						transactions = cloudData.transactions; 
+						budgets = cloudData.budgets;
+						
+						// ADICIONE ESTAS LINHAS:
+						if (cloudData.categories) {
+							categories = cloudData.categories;
+							localStorage.setItem('categories', JSON.stringify(categories));
+						}
+						
+						localStorage.setItem('transactions', JSON.stringify(transactions));
+						localStorage.setItem('budgets', JSON.stringify(budgets));
+						localStorage.setItem('lastSync', cloudTimestamp);
+						
+						updateDashboard(); 
+						updateTransactionList(); 
+						updateChart(); 
+						updateBudgetsList();
+						updateCategorySelects(); // CORRIGIDO - LINHA SEPARADA
+						updateCategoriesList(); // CORRIGIDO - LINHA SEPARADA
+						
+						console.log('Dados carregados do Drive');
+					}
+				}
+				
+				setStatus('ok', '✅ Sincronizado com Google Drive');
+			} catch (err) { 
+				console.error('Erro ao carregar do Drive:', err); 
+				setStatus('error', 'Erro ao carregar do Drive'); 
+			}
+		}
+                function loadLocalData() {
             transactions = JSON.parse(localStorage.getItem('transactions')) || [];
             budgets = JSON.parse(localStorage.getItem('budgets')) || {};
+            categories = JSON.parse(localStorage.getItem('categories')) || {
+                expense: ['Alimentação', 'Transporte', 'Saúde', 'Educação', 'Entretenimento', 'Outros'],
+                income: ['Salário', 'Investimento', 'Freelance', 'Outros']
+            };
+            updateCategorySelects();
         }
         function addTransaction() {
             const description = document.getElementById('description').value.trim();
@@ -531,6 +593,94 @@
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
             document.getElementById(tabName).classList.add('active');
+        }
+		        function addCategory() {
+            const name = document.getElementById('newCategory').value.trim();
+            const type = document.getElementById('categoryType').value;
+            
+            if (!name) {
+                alert('⚠️ Digite o nome da categoria!');
+                return;
+            }
+            
+            if (type === 'expense' || type === 'both') {
+                if (!categories.expense.includes(name)) {
+                    categories.expense.push(name);
+                }
+            }
+            
+            if (type === 'income' || type === 'both') {
+                if (!categories.income.includes(name)) {
+                    categories.income.push(name);
+                }
+            }
+            
+            localStorage.setItem('categories', JSON.stringify(categories));
+            document.getElementById('newCategory').value = '';
+            
+            updateCategorySelects();
+            updateCategoriesList();
+            syncLocalToCloud();
+            
+            alert(`✅ Categoria "${name}" adicionada com sucesso!`);
+        }
+        
+        function deleteCategory(name, type) {
+            if (confirm(`Tem certeza que deseja remover a categoria "${name}"?`)) {
+                if (type === 'expense') {
+                    categories.expense = categories.expense.filter(cat => cat !== name);
+                } else if (type === 'income') {
+                    categories.income = categories.income.filter(cat => cat !== name);
+                }
+                
+                localStorage.setItem('categories', JSON.stringify(categories));
+                updateCategorySelects();
+                updateCategoriesList();
+                syncLocalToCloud();
+                
+                alert(`✅ Categoria "${name}" removida com sucesso!`);
+            }
+        }
+        
+        function updateCategorySelects() {
+            const categorySelect = document.getElementById('category');
+            const budgetCategorySelect = document.getElementById('budgetCategory');
+            
+            categorySelect.innerHTML = categories.expense.concat(categories.income)
+                .filter((v, i, a) => a.indexOf(v) === i)
+                .sort()
+                .map(cat => `<option value="${cat}">${cat}</option>`)
+                .join('');
+            
+            budgetCategorySelect.innerHTML = categories.expense
+                .sort()
+                .map(cat => `<option value="${cat}">${cat}</option>`)
+                .join('');
+        }
+        
+        function updateCategoriesList() {
+            const list = document.getElementById('categoriesList');
+            
+            const expenseList = categories.expense.sort().map(cat => 
+                `<div style="display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-sm); background-color: var(--color-bg-base); border-radius: 6px; margin-bottom: var(--spacing-xs);">
+                    <span>📤 ${cat}</span>
+                    <button class="btn-danger" onclick="deleteCategory('${cat}', 'expense')">🗑️</button>
+                </div>`
+            ).join('');
+            
+            const incomeList = categories.income.sort().map(cat => 
+                `<div style="display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-sm); background-color: var(--color-bg-base); border-radius: 6px; margin-bottom: var(--spacing-xs);">
+                    <span>📥 ${cat}</span>
+                    <button class="btn-danger" onclick="deleteCategory('${cat}', 'income')">🗑️</button>
+                </div>`
+            ).join('');
+            
+            list.innerHTML = `
+                <h4 style="color: var(--color-text-primary); margin-bottom: var(--spacing-sm);">Despesas:</h4>
+                ${expenseList || '<p class="no-data">Nenhuma categoria de despesa</p>'}
+                <h4 style="color: var(--color-text-primary); margin: var(--spacing-lg) 0 var(--spacing-sm);">Receitas:</h4>
+                ${incomeList || '<p class="no-data">Nenhuma categoria de receita</p>'}
+            `;
         }
         function formatCurrency(value) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value); }
         function formatDate(dateString) { return new Intl.DateTimeFormat('pt-BR').format(new Date(dateString)); }
