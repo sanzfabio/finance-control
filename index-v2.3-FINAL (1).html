@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finance Control Pro v2.3</title>
+    <title>Finance Control Pro v2.4</title>
     <style>
         :root {
             --color-bg-base: #0f172a;
@@ -323,8 +323,8 @@
         <header>
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-md);">
                 <div>
-                    <h1>💰 Finance Control Pro <span class="version-badge">v2.3</span></h1>
-                    <p class="header-subtitle">Planejamento Financeiro Familiar com FP&A</p>
+                    <h1>💰 Finance Control Pro <span class="version-badge">v2.4</span></h1>
+                    <p class="header-subtitle">Planejamento Financeiro Familiar com FP&A | Orçamento, Metas e Drive sync</p>
                 </div>
                 <div class="button-group">
                     <button id="googleSignInBtn" class="btn-primary">🔐 Login Google</button>
@@ -506,13 +506,13 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">Configurar Orçamento Mensal</h2>
-                <button class="modal-close" onclick="document.getElementById('budgetModal').classList.remove('show')">×</button>
+                <button class="modal-close" onclick="closeModal('budgetModal')">×</button>
             </div>
             <form id="budgetForm">
                 <div id="budgetCategoriesForm"></div>
                 <div class="button-group" style="margin-top: var(--spacing-lg);">
                     <button type="submit" class="btn-primary">💾 Salvar</button>
-                    <button type="button" class="btn-secondary" onclick="document.getElementById('budgetModal').classList.remove('show')">✕ Cancelar</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal('budgetModal')">✕ Cancelar</button>
                 </div>
             </form>
         </div>
@@ -522,7 +522,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">Nova Meta Financeira</h2>
-                <button class="modal-close" onclick="document.getElementById('goalModal').classList.remove('show')">×</button>
+                <button class="modal-close" onclick="closeModal('goalModal')">×</button>
             </div>
             <form id="goalForm">
                 <div class="form-field" style="margin-bottom: var(--spacing-md);">
@@ -547,7 +547,7 @@
                 </div>
                 <div class="button-group" style="margin-top: var(--spacing-lg);">
                     <button type="submit" class="btn-primary">💾 Salvar</button>
-                    <button type="button" class="btn-secondary" onclick="document.getElementById('goalModal').classList.remove('show')">✕ Cancelar</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal('goalModal')">✕ Cancelar</button>
                 </div>
             </form>
         </div>
@@ -557,7 +557,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">Nova Conta/Cartão</h2>
-                <button class="modal-close" onclick="document.getElementById('accountModal').classList.remove('show')">×</button>
+                <button class="modal-close" onclick="closeModal('accountModal')">×</button>
             </div>
             <form id="accountForm">
                 <div class="form-field" style="margin-bottom: var(--spacing-md);">
@@ -589,7 +589,7 @@
                 </div>
                 <div class="button-group" style="margin-top: var(--spacing-lg);">
                     <button type="submit" class="btn-primary">💾 Salvar</button>
-                    <button type="button" class="btn-secondary" onclick="document.getElementById('accountModal').classList.remove('show')">✕ Cancelar</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal('accountModal')">✕ Cancelar</button>
                 </div>
             </form>
         </div>
@@ -601,7 +601,7 @@
 'use strict';
 
 const APP_CONFIG = {
-    version: '2.3.0',
+    version: '2.4.0',
     googleClientId: '576473287840-cb63ib6vjfamk3le7detfeqpk4v9obh1.apps.googleusercontent.com',
     googleApiKey: 'AIzaSyA4lbvkd1_57ifjhpbt0vzT9IRNNZMl8rU',
     driveFileName: 'finance-control-pro-data.json'
@@ -645,6 +645,7 @@ let googleAccessToken = null;
 let driveFileId = null;
 
 function init() {
+    console.log('🚀 Finance Control Pro v2.4 iniciando...');
     loadData();
     setupUI();
     setupEvents();
@@ -657,14 +658,16 @@ function loadData() {
     if (saved) {
         try {
             appData = JSON.parse(saved);
+            console.log('✅ Dados carregados:', appData.transactions.length, 'transações');
         } catch (e) {
-            console.error('Erro ao carregar dados:', e);
+            console.error('❌ Erro ao carregar dados:', e);
         }
     }
 }
 
 function saveData() {
     localStorage.setItem('financeData', JSON.stringify(appData));
+    console.log('💾 Dados salvos localmente');
 }
 
 function setupUI() {
@@ -794,6 +797,10 @@ function setupEvents() {
     document.getElementById('syncBtn').addEventListener('click', syncDrive);
 }
 
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.remove('show');
+}
+
 function suggestCategory(desc) {
     const lower = desc.toLowerCase();
 
@@ -908,12 +915,12 @@ function renderTransactions() {
         const category = appData.categories.find(c => c.name === t.category);
 
         return '<div class="transaction-item">' +
-            '<div class="transaction-desc"><strong>' + t.description + '</strong><small>' + (category ? category.icon : '') + ' ' + t.category + '</small></div>' +
+            '<div class="transaction-desc"><strong>' + escapeHtml(t.description) + '</strong><small>' + (category ? category.icon : '') + ' ' + escapeHtml(t.category) + '</small></div>' +
             '<div class="transaction-amount ' + t.type + '">' + formatMoney(Math.abs(t.amount)) + '</div>' +
-            '<div>' + t.category + '</div>' +
+            '<div>' + escapeHtml(t.category) + '</div>' +
             '<div>' + formatDate(t.date) + '</div>' +
-            '<div class="transaction-account">' + (account ? account.name : '') + '</div>' +
-            '<div><button class="btn-danger" onclick="deleteTransaction(\'' + t.id + '\'">🗑️</button></div>' +
+            '<div class="transaction-account">' + (account ? escapeHtml(account.name) : '') + '</div>' +
+            '<div><button class="btn-danger" onclick="deleteTransaction('' + t.id + '')">🗑️</button></div>' +
             '</div>';
     }).join('');
 }
@@ -925,8 +932,8 @@ function openBudgetModal() {
 
     form.innerHTML = appData.categories.filter(c => c.type !== 'other').map(cat => {
         const val = budget[cat.name] || 0;
-        return '<div class="form-field" style="margin-bottom: var(--spacing-md);"><label>' + cat.icon + ' ' + cat.name + '</label>' +
-            '<input type="number" step="0.01" name="budget_' + cat.name + '" value="' + val + '" placeholder="0,00"></div>';
+        return '<div class="form-field" style="margin-bottom: var(--spacing-md);"><label>' + cat.icon + ' ' + escapeHtml(cat.name) + '</label>' +
+            '<input type="number" step="0.01" name="budget_' + escapeHtml(cat.name) + '" value="' + val + '" placeholder="0,00"></div>';
     }).join('');
 
     document.getElementById('budgetModal').classList.add('show');
@@ -948,7 +955,7 @@ function saveBudget(e) {
 
     saveData();
     renderBudget();
-    document.getElementById('budgetModal').classList.remove('show');
+    closeModal('budgetModal');
     showAlert('success', 'Orçamento salvo!');
 }
 
@@ -974,7 +981,7 @@ function renderBudget() {
 
     container.innerHTML = items.map(i => 
         '<div class="budget-progress"><div class="budget-category">' +
-        '<div class="budget-header"><span class="budget-name">' + i.cat + '</span>' +
+        '<div class="budget-header"><span class="budget-name">' + escapeHtml(i.cat) + '</span>' +
         '<span class="budget-amounts">' + formatMoney(i.spent) + ' / ' + formatMoney(i.planned) + '</span></div>' +
         '<div class="budget-bar"><div class="budget-fill ' + i.status + '" style="width: ' + Math.min(i.pct, 100) + '%"></div></div>' +
         '</div></div>'
@@ -995,9 +1002,9 @@ function checkAlerts() {
         const pct = planned > 0 ? (spent / planned * 100) : 0;
 
         if (pct >= 80 && pct < 100) {
-            alerts.push('<div class="alert warning"><span class="alert-icon">⚠️</span><span>Categoria <strong>' + cat + '</strong> em ' + pct.toFixed(0) + '%</span></div>');
+            alerts.push('<div class="alert warning"><span class="alert-icon">⚠️</span><span>Categoria <strong>' + escapeHtml(cat) + '</strong> em ' + pct.toFixed(0) + '%</span></div>');
         } else if (pct >= 100) {
-            alerts.push('<div class="alert warning"><span class="alert-icon">🚨</span><span>Categoria <strong>' + cat + '</strong> estourou! ' + pct.toFixed(0) + '%</span></div>');
+            alerts.push('<div class="alert warning"><span class="alert-icon">🚨</span><span>Categoria <strong>' + escapeHtml(cat) + '</strong> estourou! ' + pct.toFixed(0) + '%</span></div>');
         }
     });
 
@@ -1026,7 +1033,7 @@ function saveGoal(e) {
     appData.goals.push(goal);
     saveData();
     renderGoals();
-    document.getElementById('goalModal').classList.remove('show');
+    closeModal('goalModal');
     showAlert('success', 'Meta criada!');
 }
 
@@ -1052,13 +1059,13 @@ function renderGoals() {
         const days = Math.ceil((new Date(g.deadline) - new Date()) / 86400000);
 
         return '<div class="goal-card">' +
-            '<div class="goal-header"><span class="goal-name">' + g.name + '</span><span class="goal-progress-text">' + pct + '%</span></div>' +
+            '<div class="goal-header"><span class="goal-name">' + escapeHtml(g.name) + '</span><span class="goal-progress-text">' + pct + '%</span></div>' +
             '<div style="margin-bottom: var(--spacing-sm);"><div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--color-text-muted); margin-bottom: var(--spacing-xs);">' +
             '<span>' + formatMoney(g.current) + '</span><span>' + formatMoney(g.target) + '</span></div>' +
             '<div class="budget-bar"><div class="budget-fill safe" style="width: ' + Math.min(pct, 100) + '%"></div></div></div>' +
             '<div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--color-text-muted);"><span>📅 ' + days + ' dias</span>' +
-            '<span>🏦 ' + (acc ? acc.name : '') + '</span></div>' +
-            '<div style="margin-top: var(--spacing-sm);"><button class="btn-danger" onclick="deleteGoal(\'' + g.id + '\')">🗑️ Excluir</button></div></div>';
+            '<span>🏦 ' + (acc ? escapeHtml(acc.name) : '') + '</span></div>' +
+            '<div style="margin-top: var(--spacing-sm);"><button class="btn-danger" onclick="deleteGoal('' + g.id + '')">🗑️ Excluir</button></div></div>';
     }).join('');
 }
 
@@ -1083,7 +1090,7 @@ function saveAccount(e) {
     saveData();
     populateAccounts();
     renderAccounts();
-    document.getElementById('accountModal').classList.remove('show');
+    closeModal('accountModal');
     showAlert('success', 'Conta criada!');
 }
 
@@ -1107,24 +1114,30 @@ function renderAccounts() {
     const purposes = {general: 'Geral', bills: 'Contas Fixas', daily: 'Diário', emergency: 'Emergência', goal: 'Meta'};
 
     container.innerHTML = appData.accounts.map(a =>
-        '<div class="goal-card"><div class="goal-header"><span class="goal-name">' + a.name + '</span>' +
+        '<div class="goal-card"><div class="goal-header"><span class="goal-name">' + escapeHtml(a.name) + '</span>' +
         '<span class="goal-progress-text">' + formatMoney(a.balance) + '</span></div>' +
         '<div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--color-text-muted); margin-top: var(--spacing-sm);">' +
         '<span>📋 ' + types[a.type] + '</span><span>🎯 ' + purposes[a.purpose] + '</span></div>' +
-        '<div style="margin-top: var(--spacing-sm);"><button class="btn-danger" onclick="deleteAccount(\'' + a.id + '\')">🗑️ Excluir</button></div></div>'
+        '<div style="margin-top: var(--spacing-sm);"><button class="btn-danger" onclick="deleteAccount('' + a.id + '')">🗑️ Excluir</button></div></div>'
     ).join('');
 }
 
 function exportData() {
-    const str = JSON.stringify(appData, null, 2);
-    const blob = new Blob([str], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'finance-backup-' + new Date().toISOString().split('T')[0] + '.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    showAlert('success', 'Dados exportados!');
+    try {
+        const str = JSON.stringify(appData, null, 2);
+        const blob = new Blob([str], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'finance-backup-' + new Date().toISOString().split('T')[0] + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        showAlert('success', 'Dados exportados! (' + appData.transactions.length + ' transações)');
+        console.log('💾 Exportado:', appData.transactions.length, 'transações');
+    } catch (e) {
+        console.error('❌ Erro ao exportar:', e);
+        showAlert('warning', 'Erro ao exportar dados');
+    }
 }
 
 function importData(e) {
@@ -1135,12 +1148,19 @@ function importData(e) {
     reader.onload = function(ev) {
         try {
             const imported = JSON.parse(ev.target.result);
-            if (!confirm('Importar substituirá todos os dados. Continuar?')) return;
+            console.log('📥 Importando:', imported.transactions ? imported.transactions.length : 0, 'transações');
+
+            if (!confirm('Importar ' + (imported.transactions ? imported.transactions.length : 0) + ' transações? Isso substituirá todos os dados atuais.')) {
+                return;
+            }
+
             appData = imported;
             saveData();
-            location.reload();
+            showAlert('success', 'Dados importados! Recarregando...');
+            setTimeout(() => location.reload(), 1500);
         } catch (err) {
-            alert('Erro ao importar arquivo');
+            console.error('❌ Erro ao importar:', err);
+            alert('Erro ao importar arquivo: ' + err.message);
         }
     };
     reader.readAsText(file);
@@ -1154,7 +1174,10 @@ function clearAll() {
 }
 
 function initGoogle() {
-    if (typeof gapi === 'undefined') return;
+    if (typeof gapi === 'undefined') {
+        console.log('⚠️ Google API não carregada');
+        return;
+    }
 
     gapi.load('client', async () => {
         try {
@@ -1162,8 +1185,9 @@ function initGoogle() {
                 apiKey: APP_CONFIG.googleApiKey,
                 discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
             });
+            console.log('✅ Google API inicializada');
         } catch (e) {
-            console.error('Google API erro:', e);
+            console.error('❌ Google API erro:', e);
         }
     });
 
@@ -1185,13 +1209,20 @@ function googleSignIn() {
         client_id: APP_CONFIG.googleClientId,
         scope: 'https://www.googleapis.com/auth/drive.file',
         callback: (resp) => {
+            if (resp.error) {
+                console.error('❌ Erro no login:', resp.error);
+                return;
+            }
+
             googleAccessToken = resp.access_token;
             gapi.client.setToken({access_token: googleAccessToken});
             document.getElementById('googleSignInBtn').style.display = 'none';
             document.getElementById('googleSignOutBtn').style.display = 'block';
             document.getElementById('syncBtn').disabled = false;
             showAlert('success', 'Login realizado!');
-            loadFromDrive();
+            console.log('✅ Login Google realizado');
+
+            setTimeout(() => loadFromDrive(), 500);
         }
     });
 
@@ -1206,6 +1237,7 @@ function googleSignOut() {
     document.getElementById('googleSignOutBtn').style.display = 'none';
     document.getElementById('syncBtn').disabled = true;
     showAlert('success', 'Logout realizado!');
+    console.log('🚪 Logout realizado');
 }
 
 async function syncDrive() {
@@ -1215,32 +1247,56 @@ async function syncDrive() {
     }
 
     try {
-        showAlert('success', 'Sincronizando...');
+        showAlert('success', 'Sincronizando com Drive...');
+        console.log('☁️ Iniciando sincronização...');
 
         await findOrCreateFile();
+        console.log('📁 Arquivo ID:', driveFileId);
 
         const content = JSON.stringify(appData, null, 2);
-        const blob = new Blob([content], {type: 'application/json'});
+        console.log('📦 Tamanho dos dados:', content.length, 'caracteres,', appData.transactions.length, 'transações');
 
-        const meta = {name: APP_CONFIG.driveFileName, mimeType: 'application/json'};
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(meta)], {type: 'application/json'}));
-        form.append('file', blob);
+        const boundary = '-------314159265358979323846';
+        const delimiter = "\r\n--" + boundary + "\r\n";
+        const close_delim = "\r\n--" + boundary + "--";
+
+        const metadata = {
+            name: APP_CONFIG.driveFileName,
+            mimeType: 'application/json'
+        };
+
+        const multipartRequestBody =
+            delimiter +
+            'Content-Type: application/json\r\n\r\n' +
+            JSON.stringify(metadata) +
+            delimiter +
+            'Content-Type: application/json\r\n\r\n' +
+            content +
+            close_delim;
 
         const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + driveFileId + '?uploadType=multipart', {
             method: 'PATCH',
-            headers: {Authorization: 'Bearer ' + googleAccessToken},
-            body: form
+            headers: {
+                'Authorization': 'Bearer ' + googleAccessToken,
+                'Content-Type': 'multipart/related; boundary="' + boundary + '"'
+            },
+            body: multipartRequestBody
         });
 
+        console.log('📤 Resposta do upload:', resp.status);
+
         if (resp.ok) {
-            showAlert('success', 'Sincronizado com Drive!');
+            const result = await resp.json();
+            console.log('✅ Sincronizado:', result);
+            showAlert('success', 'Sincronizado com Drive! (' + appData.transactions.length + ' transações)');
         } else {
-            throw new Error('Erro');
+            const error = await resp.text();
+            console.error('❌ Erro no upload:', resp.status, error);
+            throw new Error('Erro ao sincronizar: ' + resp.status);
         }
     } catch (e) {
-        console.error(e);
-        showAlert('warning', 'Erro ao sincronizar');
+        console.error('❌ Erro na sincronização:', e);
+        showAlert('warning', 'Erro ao sincronizar com Drive: ' + e.message);
     }
 }
 
@@ -1254,38 +1310,75 @@ async function findOrCreateFile() {
 
         if (resp.result.files && resp.result.files.length > 0) {
             driveFileId = resp.result.files[0].id;
+            console.log('📁 Arquivo encontrado:', driveFileId);
         } else {
             const createResp = await gapi.client.drive.files.create({
                 resource: {name: APP_CONFIG.driveFileName, mimeType: 'application/json'},
                 fields: 'id'
             });
             driveFileId = createResp.result.id;
+            console.log('📁 Arquivo criado:', driveFileId);
         }
     } catch (e) {
+        console.error('❌ Erro ao buscar/criar arquivo:', e);
         throw e;
     }
 }
 
 async function loadFromDrive() {
-    if (!googleAccessToken) return;
+    if (!googleAccessToken) {
+        console.log('❌ Não está logado no Google');
+        return;
+    }
 
     try {
+        console.log('🔍 Buscando arquivo no Drive...');
         await findOrCreateFile();
 
+        console.log('📥 Baixando dados... ID:', driveFileId);
         const resp = await fetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media', {
             headers: {Authorization: 'Bearer ' + googleAccessToken}
         });
 
+        console.log('📊 Status:', resp.status);
+
         if (resp.ok) {
-            const data = await resp.json();
-            if (confirm('Dados encontrados no Drive. Carregar?')) {
-                appData = data;
-                saveData();
-                location.reload();
+            const text = await resp.text();
+            console.log('📄 Tamanho do arquivo:', text.length, 'bytes');
+
+            if (text && text.trim().length > 10) {
+                try {
+                    const data = JSON.parse(text);
+                    const txCount = data.transactions ? data.transactions.length : 0;
+                    console.log('✅ Transações encontradas:', txCount);
+
+                    if (txCount === 0) {
+                        console.log('⚠️ Drive tem 0 transações');
+                        showAlert('warning', 'Drive está vazio. Use Sincronizar para salvar seus dados.');
+                        return;
+                    }
+
+                    if (confirm('Encontrado: ' + txCount + ' transações no Drive. Carregar?')) {
+                        appData = data;
+                        saveData();
+                        showAlert('success', 'Dados carregados do Drive!');
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                } catch(e) {
+                    console.error('❌ Erro ao parsear JSON:', e);
+                    showAlert('warning', 'Arquivo corrompido no Drive');
+                }
+            } else {
+                console.log('⚠️ Arquivo vazio no Drive');
+                showAlert('warning', 'Drive está vazio. Use Sincronizar para salvar seus dados.');
             }
+        } else {
+            console.log('❌ Erro HTTP:', resp.status);
+            showAlert('warning', 'Erro ao acessar Drive (HTTP ' + resp.status + ')');
         }
     } catch (e) {
-        console.log('Sem dados no Drive:', e);
+        console.error('❌ Erro ao carregar do Drive:', e);
+        showAlert('warning', 'Erro ao carregar dados: ' + e.message);
     }
 }
 
@@ -1306,9 +1399,14 @@ function showAlert(type, msg) {
     const container = document.getElementById('alertsContainer');
     const div = document.createElement('div');
     div.className = 'alert ' + type;
-    div.innerHTML = '<span class="alert-icon">' + (type === 'success' ? '✓' : '⚠️') + '</span><span>' + msg + '</span>';
+    div.innerHTML = '<span class="alert-icon">' + (type === 'success' ? '✓' : '⚠️') + '</span><span>' + escapeHtml(msg) + '</span>';
     container.insertBefore(div, container.firstChild);
     setTimeout(() => div.remove(), 5000);
+}
+
+function escapeHtml(text) {
+    const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+    return text.replace(/[&<>"']/g, m => map[m]);
 }
 
 if (document.readyState === 'loading') {
